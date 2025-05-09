@@ -1,32 +1,71 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
+const config = require('./config');
 
-// Direct configuration instead of using .env
-const connectionString = "DefaultEndpointsProtocol=https;AccountName=videodistributionstorage;AccountKey=SHhz7aR43i+eOKXde7+Sg0OpMw3UlJmLOl3W1e70GAN5qMi+vT1x6zyES+i7SOlAsGGgtiaCQQz9+AStluu5Zg==;EndpointSuffix=core.windows.net";
-const containerName = "video-uploads";
+// Create the BlobServiceClient object with error handling
+let blobServiceClient;
+try {
+    blobServiceClient = BlobServiceClient.fromConnectionString(
+        config.AZURE_STORAGE_CONNECTION_STRING
+    );
+    console.log('Successfully created BlobServiceClient');
+} catch (error) {
+    console.error('Error creating BlobServiceClient:', error);
+    throw new Error('Failed to initialize Azure Storage client');
+}
 
-const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
-const containerClient = blobServiceClient.getContainerClient(containerName);
+// Get a reference to a container with error handling
+let containerClient;
+try {
+    containerClient = blobServiceClient.getContainerClient(
+        config.AZURE_STORAGE_CONTAINER_NAME
+    );
+    console.log('Successfully created ContainerClient');
+} catch (error) {
+    console.error('Error creating ContainerClient:', error);
+    throw new Error('Failed to initialize Azure Storage container client');
+}
 
 const uploadToAzure = async (file, fileName) => {
     try {
+        console.log('Starting upload to Azure for file:', fileName);
+        
+        // Get a block blob client
         const blockBlobClient = containerClient.getBlockBlobClient(fileName);
-        await blockBlobClient.uploadData(file.buffer, {
-            blobHTTPHeaders: { blobContentType: file.mimetype }
-        });
+        console.log('Blob URL:', blockBlobClient.url);
+
+        // Upload data to the blob
+        const uploadResult = await blockBlobClient.upload(file.buffer, file.buffer.length);
+        console.log('Upload successful:', uploadResult);
+
+        // Return the blob URL
         return blockBlobClient.url;
     } catch (error) {
-        console.error('Error uploading to Azure:', error);
-        throw error;
+        console.error('Error uploading to Azure:', {
+            error: error.message,
+            stack: error.stack,
+            details: error.details || {},
+            fileName,
+            containerName: config.AZURE_STORAGE_CONTAINER_NAME
+        });
+        throw new Error('Failed to upload file to storage: ' + error.message);
     }
 };
 
 const deleteFromAzure = async (fileName) => {
     try {
+        console.log('Starting delete from Azure for file:', fileName);
         const blockBlobClient = containerClient.getBlockBlobClient(fileName);
         await blockBlobClient.delete();
+        console.log('Successfully deleted file:', fileName);
     } catch (error) {
-        console.error('Error deleting from Azure:', error);
-        throw error;
+        console.error('Error deleting from Azure:', {
+            error: error.message,
+            stack: error.stack,
+            details: error.details || {},
+            fileName,
+            containerName: config.AZURE_STORAGE_CONTAINER_NAME
+        });
+        throw new Error('Failed to delete file from storage: ' + error.message);
     }
 };
 
